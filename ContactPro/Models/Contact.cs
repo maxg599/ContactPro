@@ -1,5 +1,5 @@
 ﻿
-using ContactPro.Enum;
+using ContactPro.Enums;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -66,7 +66,7 @@ namespace ContactPro.Models
         public IFormFile? ImageFile { get; set; }
 
         //virtuals
-        public virtual AppUser AppUser { get; set; }
+        public virtual AppUser? AppUser { get; set; }
 
         public virtual ICollection<Category> Categories { get; set;} = new HashSet<Category>();
 
