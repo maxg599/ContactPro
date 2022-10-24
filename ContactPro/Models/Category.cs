@@ -8,7 +8,7 @@ namespace ContactPro.Models
         public int Id { get; set; }
 
         [Required]
-        public string AppUserId { get; set; }
+        public string? AppUserId { get; set; }
 
         [Required]
         [Display(Name = "Category Name")]
