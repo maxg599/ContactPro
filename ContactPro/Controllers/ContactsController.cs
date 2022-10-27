@@ -26,7 +26,7 @@ namespace ContactPro.Controllers
         {
             _context = context;
             _userManager = userManager;
-            _imageService = imageService;   
+            _imageService = imageService;
             _addressBookService = addressBookService;
         }
 
@@ -34,8 +34,20 @@ namespace ContactPro.Controllers
         [Authorize]
         public async Task<IActionResult> Index()
         {
-            var applicationDbContext = _context.Contacts.Include(c => c.AppUser);
-            return View(await applicationDbContext.ToListAsync());
+            var contacts = new List<Contact>();
+            string appUserId = _userManager.GetUserId(User);
+
+            //return userID and its associated contacts and categories;
+            AppUser? appUser = _context.Users.Include(c => c.Contacts).ThenInclude(c => c.Categories)
+                .FirstOrDefault(u => u.Id == appUserId);
+
+            var categories = appUser.Categories;
+
+            contacts = appUser.Contacts.OrderBy(c => c.LastName).ThenBy(c => c.FirstName).ToList();
+
+            ViewData["CategoryId"] = new SelectList(categories, "Id", "Name");
+
+            return View(contacts);
         }
 
         // GET: Contacts/Details/5
@@ -60,11 +72,11 @@ namespace ContactPro.Controllers
 
         // GET: Contacts/Create
         [Authorize]
-        public async Task <IActionResult> Create()
+        public async Task<IActionResult> Create()
         {
             string appUserId = _userManager.GetUserId(User);
             ViewData["StatesList"] = new SelectList(Enum.GetValues(typeof(states)).Cast<states>().ToList());
-            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId), "Id", "Name") ;
+            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId), "Id", "Name");
 
 
             return View();
@@ -89,7 +101,7 @@ namespace ContactPro.Controllers
                     contact.BirthDate = DateTime.SpecifyKind(contact.BirthDate.Value, DateTimeKind.Utc);
                 }
 
-                if(contact.ImageFile != null)
+                if (contact.ImageFile != null)
                 {
                     contact.ImageData = await _imageService.ConvertFileToByteArrayAsync(contact.ImageFile);
                     contact.ImageType = contact.ImageFile.ContentType;

@@ -5,11 +5,11 @@ using Microsoft.AspNetCore.Identity;
 
 namespace ContactPro.Models
 {
-    public class AppUser : IdentityUser 
+    public class AppUser : IdentityUser
     {
         [Required]
         [Display(Name = "First Name")]
-        [StringLength(50,ErrorMessage ="The {0} must be at least {2} and a max of {1} characters long.", MinimumLength = 2)]
+        [StringLength(50, ErrorMessage = "The {0} must be at least {2} and a max of {1} characters long.", MinimumLength = 2)]
         public string? FirstName { get; set; }
 
         [Required]
@@ -19,5 +19,9 @@ namespace ContactPro.Models
 
         [NotMapped]
         public string? FullName { get { return $"{FirstName} {LastName}"; } }
-      }
+
+        public virtual ICollection<Contact> Contacts { get; set; } = new HashSet<Contact>();
+        public virtual ICollection<Category> Categories { get; set; } = new HashSet<Category>();
+
+    }
 }
