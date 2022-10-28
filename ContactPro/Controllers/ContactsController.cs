@@ -32,8 +32,9 @@ namespace ContactPro.Controllers
 
         // GET: Contacts
         [Authorize]
-        public async Task<IActionResult> Index()
+        public IActionResult Index(int categoryId)
         {
+
             var contacts = new List<Contact>();
             string appUserId = _userManager.GetUserId(User);
 
@@ -42,12 +43,45 @@ namespace ContactPro.Controllers
                 .FirstOrDefault(u => u.Id == appUserId);
 
             var categories = appUser.Categories;
+            if (categoryId == 0)
+            {
 
-            contacts = appUser.Contacts.OrderBy(c => c.LastName).ThenBy(c => c.FirstName).ToList();
+                contacts = appUser.Contacts.OrderBy(c => c.LastName).ThenBy(c => c.FirstName).ToList();
+            }
+            else
+            {
+                contacts = appUser.Categories.FirstOrDefault(c => c.Id == categoryId)
+                                   .Contacts.OrderBy(c => c.LastName).ThenBy(c => c.FirstName).ToList();
+            }
 
-            ViewData["CategoryId"] = new SelectList(categories, "Id", "Name");
+            ViewData["CategoryId"] = new SelectList(categories, "Id", "Name", categoryId);
 
             return View(contacts);
+        }
+
+        [Authorize]
+        public IActionResult SearchContacts(string searchString)
+        {
+            string appUserId = _userManager.GetUserId(User);
+            var contacts = new List<Contact>();
+
+            AppUser? appUser = _context.Users.Include(c => c.Contacts)
+                .ThenInclude(c => c.Categories).FirstOrDefault(u => u.Id == appUserId);
+
+            if (String.IsNullOrEmpty(searchString))
+            {
+                contacts = appUser.Contacts.OrderBy(c => c.LastName)
+                                                .ThenBy(c => c.FirstName).ToList();
+            }
+            else
+            {
+                contacts = appUser.Contacts.Where(c => c.FullName!.ToLower().Contains(searchString.ToLower())).OrderBy(c => c.LastName)
+                                                .ThenBy(c => c.FirstName).ToList();
+            }
+
+            ViewData["Category Id"] = new SelectList(appUser.Categories, "Id", "Name", 0);
+
+            return View(nameof(Index), contacts);
         }
 
         // GET: Contacts/Details/5
@@ -87,7 +121,7 @@ namespace ContactPro.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("Id,FirstName,LastName,BirthDate,Address,Address2,City,State,ZipCode,Email,PhoneNumber,ImageData,ImageType,ImageFile")] Contact contact, List<int> CategoryList)
+        public async Task<IActionResult> Create([Bind("Id,FirstName,LastName,BirthDate,Address,Address2,City,State,ZipCode,Email,PhoneNumber,ImageData,ImageType,ImageFile, CategoryList")] Contact contact, List<int> CategoryList)
         {
             ModelState.Remove("AppUserId");
 
@@ -107,18 +141,19 @@ namespace ContactPro.Controllers
                     contact.ImageType = contact.ImageFile.ContentType;
                 }
 
-                //loop over all the selected categories
 
-                foreach (int categoryId in CategoryList)
-                {
-                    await _addressBookService.AddContactToCategoryAsync(categoryId, contact.Id);
-                }
 
 
                 //save each category selected to the contactcategories table
 
                 _context.Add(contact);
                 await _context.SaveChangesAsync();
+
+                foreach (int categoryId in CategoryList)
+                {
+                    await _addressBookService.AddContactToCategoryAsync(categoryId, contact.Id);
+                }
+
                 return RedirectToAction(nameof(Index));
             }
 
@@ -134,12 +169,19 @@ namespace ContactPro.Controllers
                 return NotFound();
             }
 
-            var contact = await _context.Contacts.FindAsync(id);
+            string appUserId = _userManager.GetUserId(User);
+
+            //var contact = await _context.Contacts.FindAsync(id);
+            var contact = await _context.Contacts.Where(c => c.Id == id && c.AppUserId ==appUserId)
+                                                    .FirstOrDefaultAsync();
+
             if (contact == null)
             {
                 return NotFound();
             }
-            ViewData["AppUserId"] = new SelectList(_context.Users, "Id", "Id", contact.AppUserId);
+            ViewData["StatesList"] = new SelectList(Enum.GetValues(typeof(states)).Cast<states>().ToList());
+            ViewData["CategoryList"] = new MultiSelectList(await _addressBookService.GetUserCategoriesAsync(appUserId), "Id", "Name", await _addressBookService.GetContactCategoryIdAsync(contact.Id));
+
             return View(contact);
         }
 
