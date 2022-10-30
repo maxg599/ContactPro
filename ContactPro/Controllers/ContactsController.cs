@@ -7,12 +7,15 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using ContactPro.Data;
 using ContactPro.Models;
+using ContactPro.Models.ViewModels;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
 using ContactPro.Enums;
 using ContactPro.Services.Interfaces;
 using ContactPro.Services;
+using Microsoft.AspNetCore.Identity.UI.Services;
+
 namespace ContactPro.Controllers
 {
     public class ContactsController : Controller
@@ -21,19 +24,23 @@ namespace ContactPro.Controllers
         private readonly UserManager<AppUser> _userManager;
         private readonly IimageService _imageService;
         private readonly IAddressBookService _addressBookService;
+        private readonly IEmailSender _emailService;
 
-        public ContactsController(ApplicationDbContext context, UserManager<AppUser> userManager, IimageService imageService, IAddressBookService addressBookService)
+        public ContactsController(ApplicationDbContext context, UserManager<AppUser> userManager, IimageService imageService, IAddressBookService addressBookService, IEmailSender emailService)
         {
             _context = context;
             _userManager = userManager;
             _imageService = imageService;
             _addressBookService = addressBookService;
+            _emailService = emailService;
         }
 
         // GET: Contacts
         [Authorize]
-        public IActionResult Index(int categoryId)
+        public IActionResult Index(int categoryId, string swalMessage = null)
         {
+            ViewData["SwalMessage"] = swalMessage;
+
 
             var contacts = new List<Contact>();
             string appUserId = _userManager.GetUserId(User);
@@ -82,6 +89,58 @@ namespace ContactPro.Controllers
             ViewData["Category Id"] = new SelectList(appUser.Categories, "Id", "Name", 0);
 
             return View(nameof(Index), contacts);
+        }
+
+        //Email Get//
+
+        [Authorize]
+        public  async Task<IActionResult> EmailContact(int id)
+        {
+            string appUserId = _userManager.GetUserId(User);
+            Contact? contact = await _context.Contacts.Where(c => c.Id == id && c.AppUserId == appUserId)
+                                                            .FirstOrDefaultAsync();
+
+            if(contact == null)
+            {
+                return NotFound();
+            }
+
+            EmailData emailData = new EmailData()
+            {
+                EmailAddress = contact.Email,
+                FirstName = contact.FirstName,
+                LastName = contact.LastName
+            };
+
+            EmailContactViewModel model = new EmailContactViewModel()
+            {
+                Contact = contact,
+                EmailData = emailData
+            };
+            
+            return View(model);
+        }
+        //Email Post//
+
+        [HttpPost]
+        [Authorize]
+        public async Task<IActionResult> EmailContact(EmailContactViewModel ecvm)
+        {
+            if (ModelState.IsValid)
+            {
+                try
+                {
+                    await _emailService.SendEmailAsync(ecvm.EmailData.EmailAddress, ecvm.EmailData.Subject, ecvm.EmailData.Body);
+
+                    return RedirectToAction("Index", "Contacts", new {swalMessage = "Success: Email Sent"});
+                }
+                catch
+                {
+                    return RedirectToAction("Index", "Contacts", new { swalMessage = "Error: Email Didn't Send" });
+                    throw;
+                }
+            }
+            return View(ecvm);
         }
 
         // GET: Contacts/Details/5
@@ -172,7 +231,7 @@ namespace ContactPro.Controllers
             string appUserId = _userManager.GetUserId(User);
 
             //var contact = await _context.Contacts.FindAsync(id);
-            var contact = await _context.Contacts.Where(c => c.Id == id && c.AppUserId ==appUserId)
+            var contact = await _context.Contacts.Where(c => c.Id == id && c.AppUserId == appUserId)
                                                     .FirstOrDefaultAsync();
 
             if (contact == null)
@@ -190,7 +249,7 @@ namespace ContactPro.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Edit(int id, [Bind("Id,AppUserId,FirstName,LastName,BirthDate,Address,Address2,City,State,ZipCode,Email,PhoneNumber,Created,ImageData,ImageType")] Contact contact)
+        public async Task<IActionResult> Edit(int id, [Bind("Id,AppUserId,FirstName,LastName,BirthDate,Address,Address2,City,State,ZipCode,Email,PhoneNumber,Created,ImageData,ImageType,ImageFile")] Contact contact, List<int> CategoryList)
         {
             if (id != contact.Id)
             {
@@ -201,8 +260,40 @@ namespace ContactPro.Controllers
             {
                 try
                 {
+                    contact.Created = DateTime.SpecifyKind(contact.Created, DateTimeKind.Utc);
+                    if (contact.BirthDate != null)
+                    {
+                        contact.BirthDate = DateTime.SpecifyKind(contact.BirthDate.Value, DateTimeKind.Utc);
+                    }
+
+                    if (contact.ImageFile != null)
+                    {
+                        contact.ImageData = await _imageService.ConvertFileToByteArrayAsync(contact.ImageFile);
+
+                        contact.ImageType = contact.ImageFile.ContentType;
+                    }
+
                     _context.Update(contact);
                     await _context.SaveChangesAsync();
+
+                    //save categories
+                    //remove current categories
+                    List<Category> oldCategories = (await _addressBookService.GetContactCategoriesAsync(contact.Id)).ToList();
+
+                    foreach (var category in oldCategories)
+                    {
+                        await _addressBookService.RemoveContactFromCategoryAsync(category.Id, contact.Id);
+
+                    }
+
+                    //add new category
+                    foreach(int categoryId in CategoryList)
+                    {
+                        await _addressBookService.AddContactToCategoryAsync(categoryId, contact.Id);
+                    }
+
+                    
+
                 }
                 catch (DbUpdateConcurrencyException)
                 {
