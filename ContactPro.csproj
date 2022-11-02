@@ -5,6 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>aspnet-ContactPro-9A571DB9-10F6-4F87-84C6-B643C9882492</UserSecretsId>
+	  <InvarientGlobalization>true</InvarientGlobalization>
   </PropertyGroup>
 
   <ItemGroup>
